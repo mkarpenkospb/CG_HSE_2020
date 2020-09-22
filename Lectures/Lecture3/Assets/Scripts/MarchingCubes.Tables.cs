@@ -68,7 +68,7 @@ public class MarchingCubes
         /// For details on edge indexing please refer to the lecture slides.
         /// </summary>
         // Unfortunately there is no such struct as byte3 in Unity
-        public static readonly int3[][] CaseToVertices = 
+        public static readonly int3[][] CaseToEdges = 
         {
             new[]
             {
