@@ -73,11 +73,11 @@ public class MeshGenerator : MonoBehaviour
                 int[] edgeVertexes2 = MarchingCubes.Tables._cubeEdges[edgeIndex.y];
                 int[] edgeVertexes3 = MarchingCubes.Tables._cubeEdges[edgeIndex.z];
                 Vector3 pt1 = Vector3.Lerp(cube[edgeVertexes1[0]], cube[edgeVertexes1[1]],
-                    funcValues[edgeVertexes1[1]] / (funcValues[edgeVertexes1[1]] - funcValues[edgeVertexes1[0]]));
+                    -funcValues[edgeVertexes1[0]] / (funcValues[edgeVertexes1[1]] - funcValues[edgeVertexes1[0]]));
                 Vector3 pt2 = Vector3.Lerp(cube[edgeVertexes2[0]], cube[edgeVertexes2[1]],
-                    funcValues[edgeVertexes2[1]] / (funcValues[edgeVertexes2[1]] - funcValues[edgeVertexes2[0]]));
+                    -funcValues[edgeVertexes2[0]] / (funcValues[edgeVertexes2[1]] - funcValues[edgeVertexes2[0]]));
                 Vector3 pt3 = Vector3.Lerp(cube[edgeVertexes3[0]], cube[edgeVertexes3[1]],
-                    funcValues[edgeVertexes3[1]] / (funcValues[edgeVertexes3[1]] - funcValues[edgeVertexes3[0]]));
+                    -funcValues[edgeVertexes3[0]] / (funcValues[edgeVertexes3[1]] - funcValues[edgeVertexes3[0]]));
 
                 indices.Add(vertices.Count);
                 vertices.Add(pt1);
