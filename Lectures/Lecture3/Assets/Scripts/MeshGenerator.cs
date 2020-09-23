@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Unity.Mathematics;
 using UnityEngine;
@@ -11,10 +12,30 @@ public class MeshGenerator : MonoBehaviour
 
     private MeshFilter _filter;
     private Mesh _mesh;
-
+    private ComputeShader _shaderCubes;
+    private int _kernelCubes;
+    private ComputeBuffer _vertexBuffer;
+    private ComputeBuffer _normalBuffer;
+    private ComputeBuffer _indexesBuffer;
+    private ComputeBuffer _cubesCenters;
+    private ComputeBuffer _caseToEdges;
+    // List<Vector3> vertecis = new List<Vector3>();
+    // private ComputeBuffer _CaseToEdges = new ComputeBuffer(256, 3 * 3 * sizeof(int));
+    
+    
     private List<Vector3> vertices = new List<Vector3>();
     private List<Vector3> normals = new List<Vector3>();
     private List<int> indices = new List<int>();
+    
+    
+    
+    private void Start()
+    {
+        _shaderCubes = Resources.Load<ComputeShader>("cubes");
+        // if (!_shaderCubes.HasKernel("kernel1")) 
+        //     throw  new Exception();
+        _kernelCubes = _shaderCubes.FindKernel("kernel1");
+    }
 
     /// <summary>
     /// Executed by Unity upon object initialization. <see cref="https://docs.unity3d.com/Manual/ExecutionOrder.html"/>
@@ -47,135 +68,69 @@ public class MeshGenerator : MonoBehaviour
         float[] frontPoints = CalculateWorkingArea();
         
         // разобьем пространство на кубики
-        float cubeSide = 0.1f;
-        List<List<Vector3>> microCubes = CalculateMicroCubes(cubeSide, frontPoints);
+        float cubeSide = 0.8f;
 
-        // начнём заполнять массивы 
-        foreach (var cube in microCubes)
-        {
-            int cubeCase = 0;
-            float[] funcValues = new float[8];
-            for (int i = 0; i < 8; i++)
-            {
-                funcValues[i] = Field.F(cube[i]);
-                if (funcValues[i] > 0)
-                {
-                    cubeCase += (int) Math.Pow(2, i);
-                }
-            }
-
-            int trianglesCount = MarchingCubes.Tables.CaseToTrianglesCount[cubeCase];
-            int3[] edges = MarchingCubes.Tables.CaseToEdges[cubeCase];
-            for (int i = 0; i < trianglesCount; i++)
-            {
-                int3 edgeIndex = edges[i];
-                int[] edgeVertexes1 = MarchingCubes.Tables._cubeEdges[edgeIndex.x];
-                int[] edgeVertexes2 = MarchingCubes.Tables._cubeEdges[edgeIndex.y];
-                int[] edgeVertexes3 = MarchingCubes.Tables._cubeEdges[edgeIndex.z];
-                Vector3 pt1 = Vector3.Lerp(cube[edgeVertexes1[0]], cube[edgeVertexes1[1]],
-                    funcValues[edgeVertexes1[1]] / (funcValues[edgeVertexes1[1]] - funcValues[edgeVertexes1[0]]));
-                Vector3 pt2 = Vector3.Lerp(cube[edgeVertexes2[0]], cube[edgeVertexes2[1]],
-                    funcValues[edgeVertexes2[1]] / (funcValues[edgeVertexes2[1]] - funcValues[edgeVertexes2[0]]));
-                Vector3 pt3 = Vector3.Lerp(cube[edgeVertexes3[0]], cube[edgeVertexes3[1]],
-                    funcValues[edgeVertexes3[1]] / (funcValues[edgeVertexes3[1]] - funcValues[edgeVertexes3[0]]));
-
-                indices.Add(vertices.Count);
-                vertices.Add(pt1);
-                normals.Add(CalculateNormal(pt1));
-
-                indices.Add(vertices.Count);
-                vertices.Add(pt2);
-                normals.Add(CalculateNormal(pt2));
-
-                indices.Add(vertices.Count);
-                vertices.Add(pt3);
-                normals.Add(CalculateNormal(pt3));
-            }
-        }
+        int xCount = (int) Math.Ceiling((frontPoints[1] - frontPoints[0]) / cubeSide / 8 ) * 8 ;
+        int yCount = (int) Math.Ceiling((frontPoints[3] - frontPoints[2]) / cubeSide / 8) * 8  ;
+        int zCount = (int) Math.Ceiling((frontPoints[5] - frontPoints[4]) / cubeSide / 8) * 8 ;
+   
+        // xCount * yCount * zCount кубов, по 5 треугольников на каждый, по 3 вектора - вершины каждому
+        Vector3[] vertex = new Vector3[xCount * yCount * zCount * 5 * 3];
+        _vertexBuffer = new ComputeBuffer(xCount * yCount * zCount * 5 * 3, sizeof(float) * 3);
+        _vertexBuffer.SetData(vertex);
+        _shaderCubes.SetBuffer(_kernelCubes, "vertexes", _vertexBuffer);
+        // столько же сколько и вершин
+        Vector3[] normalsb = new Vector3[xCount * yCount * zCount * 5 * 3];
+        _normalBuffer = new ComputeBuffer(xCount * yCount * zCount * 5 * 3, sizeof(float) * 3);
+        _vertexBuffer.SetData(normalsb);
+        _shaderCubes.SetBuffer(_kernelCubes, "normals", _normalBuffer);
+        // тоже столько же
+        int[] ib = new int[xCount * yCount * zCount * 5 * 3];
+        _indexesBuffer = new ComputeBuffer(xCount * yCount * zCount * 5 * 3, sizeof(int) );
+        _indexesBuffer.SetData(ib);
+        _shaderCubes.SetBuffer(_kernelCubes, "indexes", _indexesBuffer);
         
-        _mesh.Clear();
-        _mesh.SetVertices(vertices);
-        _mesh.SetTriangles(indices, 0);
-        _mesh.SetNormals(normals); // Use _mesh.SetNormals(normals) instead when you calculate them
+        Vector3[] ballCenters = Field.Balls.Select(ball => ball.position).ToArray(); 
+        _cubesCenters = new ComputeBuffer(ballCenters.Length, sizeof(float) * 3);
+        _cubesCenters.SetData(ballCenters);
+        _shaderCubes.SetBuffer(_kernelCubes, "cubesCenters", _cubesCenters);
 
+        int3[] caseToEdgesData = MarchingCubes.Tables.CaseToEdges.SelectMany(x=>x).ToArray();
+        _caseToEdges = new ComputeBuffer(caseToEdgesData.Length, sizeof(int)  * 3 );
+        _caseToEdges.SetData(caseToEdgesData);
+        _shaderCubes.SetBuffer(_kernelCubes, "CaseToEdges", _caseToEdges);
+        
+        _shaderCubes.SetFloat("delta", cubeSide);
+        _shaderCubes.SetInt("xCount", xCount); _shaderCubes.SetFloat("xStartPoint", frontPoints[0]);
+        _shaderCubes.SetInt("yCount", yCount); _shaderCubes.SetFloat("yStartPoint", frontPoints[2]);
+        _shaderCubes.SetInt("zCount", zCount); _shaderCubes.SetFloat("zStartPoint", frontPoints[4]);
+        _shaderCubes.SetInt("cubesCount", ballCenters.Length);
+        
+        _shaderCubes.Dispatch(_kernelCubes, xCount , yCount, zCount);
+       
+        _vertexBuffer.GetData(vertex);
+        _indexesBuffer.GetData(ib);
+        _normalBuffer.GetData(normalsb);
+
+        // vertecis = vertex.Where(v => v.x != 0 || v.y != 0 || v.z != 0).ToList();
+
+
+        _mesh.Clear();
+        _mesh.SetVertices(vertex);
+        _mesh.SetTriangles(ib, 0);
+        _mesh.SetNormals(normalsb); // Use _mesh.SetNormals(normals) instead when you calculate them
         // Upload mesh data to the GPU
         _mesh.UploadMeshData(false);
     }
 
-    private Vector3 CalculateNormal(Vector3 pt)
+    private void OnDestroy()
     {
-        float delta = 0.001f;
-        Vector3 dx = new Vector3(delta, 0, 0);
-        Vector3 dy = new Vector3(0, delta, 0);
-        Vector3 dz = new Vector3(0, 0, delta);
-
-        return -Vector3.Normalize(new Vector3(
-            Field.F(pt + dx) - Field.F(pt - dx),
-            Field.F(pt + dy) - Field.F(pt - dy),
-            Field.F(pt + dz) - Field.F(pt - dz)
-        ));
-    }
-
-    private List<List<Vector3>> CalculateMicroCubes(float cubeSide, float[] frontPoints)
-    {
-        
-        int xCount = (int) Math.Ceiling((frontPoints[1] - frontPoints[0]) / cubeSide);
-        int yCount = (int) Math.Ceiling((frontPoints[3] - frontPoints[2]) / cubeSide);
-        int zCount = (int) Math.Ceiling((frontPoints[5] - frontPoints[4]) / cubeSide);
-
-        float[] xPoints = new float[xCount + 1];
-        xPoints[0] = frontPoints[0];
-        float[] yPoints = new float[yCount + 1];
-        yPoints[0] = frontPoints[2];
-        float[] zPoints = new float[zCount + 1];
-        zPoints[0] = frontPoints[4];
-
-        for (int i = 1; i < xCount + 1; ++i)
-        {
-            xPoints[i] = xPoints[i - 1] + cubeSide;
-        }
-
-        for (int i = 1; i < yCount + 1; ++i)
-        {
-            yPoints[i] = yPoints[i - 1] + cubeSide;
-        }
-
-        for (int i = 1; i < zCount + 1; ++i)
-        {
-            zPoints[i] = zPoints[i - 1] + cubeSide;
-        }
-
-
-        List<List<Vector3>> microCubes = new List<List<Vector3>>();
-
-        for (int z = 0; z < zCount; z++)
-        {
-            for (int y = 0; y < yCount; y++)
-            {
-                for (int x = 0; x < xCount; x++)
-                {
-                    // посмотрим на вершины куба из примера и поставим +1 там, где у него 1
-                    microCubes.Add(new List<Vector3>
-                    {
-                        new Vector3(xPoints[x], yPoints[y], zPoints[z]),
-                        new Vector3(xPoints[x], yPoints[y + 1], zPoints[z]),
-                        new Vector3(xPoints[x + 1], yPoints[y + 1], zPoints[z]),
-                        new Vector3(xPoints[x + 1], yPoints[y], zPoints[z]),
-                        new Vector3(xPoints[x], yPoints[y], zPoints[z + 1]),
-                        new Vector3(xPoints[x], yPoints[y + 1], zPoints[z + 1]),
-                        new Vector3(xPoints[x + 1], yPoints[y + 1], zPoints[z + 1]),
-                        new Vector3(xPoints[x + 1], yPoints[y], zPoints[z + 1]),
-                    });
-                }
-            }
-        }
-
-        return microCubes;
+        _vertexBuffer.Dispose();
     }
 
     private float[] CalculateWorkingArea()
     {
-        int radiusCoeff = 5;
+        int radiusCoeff = 1;
         Vector3[] ballsPositions = Field.Balls.Select(ball => ball.position).ToArray();
 
         float[] frontPoints =
