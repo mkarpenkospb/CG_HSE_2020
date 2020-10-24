@@ -68,7 +68,7 @@
             
             float3 SampleColor(float3 direction)
             {   
-                half4 tex = texCUBE(_Cube, direction);
+                half4 tex = texCUBElod(_Cube, float4(direction, 0));
                 return DecodeHDR(tex, _Cube_HDR).rgb;
             }
             
@@ -98,10 +98,26 @@
                 // Replace this specular calculation by Montecarlo.
                 // Normalize the BRDF in such a way, that integral over a hemysphere of (BRDF * dot(normal, w')) == 1
                 // TIP: use Random(i) to get a pseudo-random value.
-                float3 viewRefl = reflect(-viewDirection.xyz, normal);
-                float3 specular = SampleColor(viewRefl);
+                int nSamples = 2000;
+                float3 accIntegral = float3(0, 0, 0);
+                float accNormIntegral = 0;
                 
-                return fixed4(specular, 1);
+                for (int w_idx = 0; w_idx < nSamples; w_idx++)
+                {
+                    float alpha = Random(2 * w_idx) * UNITY_TWO_PI;
+                    float cosTheta = Random( 2 * w_idx  + 1);
+                    float sinTheta = sqrt(1 - pow (cosTheta, 2));
+                    
+                    float3 w = normalize(float3(sinTheta * cos(alpha), sinTheta * sin(alpha), cosTheta));
+                    float anotherOneCos = dot(w, normal);
+                    if (anotherOneCos < 0) w = -w;
+                    float3 L_i = SampleColor(w); 
+                    accNormIntegral += GetSpecularBRDF(viewDirection, w, normal) * dot(w, normal);
+                    accIntegral += L_i * GetSpecularBRDF(viewDirection, w, normal) * dot(w, normal);
+                }    
+                
+                float3 integral = accIntegral / accNormIntegral ; 
+                return fixed4( integral, 1);
             }
             ENDCG
         }
