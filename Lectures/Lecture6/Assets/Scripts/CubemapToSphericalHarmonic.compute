@@ -1,5 +1,4 @@
-﻿// Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel ComputeHarmonics
+﻿#pragma kernel ComputeHarmonics
 
 #define PI            3.14159265359f
 #define TWO_PI        6.28318530718f
@@ -40,42 +39,199 @@ float Random(uint seed)
 }
 
 float3 SampleColor(float3 direction)
-{   
+{
     float4 tex = _Env.SampleLevel(samplerLinearRepeat, direction, 0);
     return tex.rgb;
 }
+
+float harmony_coeff(int l, int m)
+{
+    if (l == 0)
+    {
+        return 1 / (2 * sqrt(PI));
+    }
+    if (l == 1 && m == -1)
+    {
+        return -sqrt(3) / (2 * sqrt(PI));
+    }
+    if (l == 1 && m == 0)
+    {
+        return sqrt(3) / (2 * sqrt(PI));
+    }
+    if (l == 1 && m == 1)
+    {
+        return -sqrt(3) / (2 * sqrt(PI));
+    }
+
+    if (l == 2 && m == -2)
+    {
+        return sqrt(15) / (2 * sqrt(PI));
+    }
+    if (l == 2 && m == -1)
+    {
+        return - sqrt(15) / (2 * sqrt(PI));
+    }
+    if (l == 2 && m == 0)
+    {
+        return sqrt(5) / (4 * sqrt(PI));
+    }
+    if (l == 2 && m == 1)
+    {
+        return - sqrt(15) / (2 * sqrt(PI));
+    }
+    if (l == 2 && m == 2)
+    {
+        return sqrt(15)  / (4 * sqrt(PI));
+    }
+    return 0;
+}
+
+float harmony_count(float3 w, int l, int m)
+{
+    if (l == 0)
+    {
+        return harmony_coeff(l, m);
+    }
+
+    if (l == 1 && m == -1)
+    {
+        return w.y * harmony_coeff(l, m);
+    }
+    if (l == 1 && m == 0)
+    {
+        return w.z * harmony_coeff(l, m);
+    }
+    if (l == 1 && m == 1)
+    {
+        return w.x * harmony_coeff(l, m);
+    }
+
+    if (l == 2 && m == -2)
+    {
+        return w.y * w.x * harmony_coeff(l, m);
+    }
+    if (l == 2 && m == -1)
+    {
+        return  w.y * w.z * harmony_coeff(l, m);
+    }
+    if (l == 2 && m == 0)
+    {
+        return (3 * w.z * w.z - 1) * harmony_coeff(l, m);
+    }
+    if (l == 2 && m == 1)
+    {
+        return  w.x * w.z * harmony_coeff(l, m);
+    }
+    if (l == 2 && m == 2)
+    {
+        return (w.x * w.x - w.y * w.y)  * harmony_coeff(l, m);
+    }
+    return 0;
+}
+
 
 [numthreads(1024, 1, 1)]
 void ComputeHarmonics(uint id : SV_DispatchThreadID)
 {
     const int THREADS = 1024;
     const int SAMPLES = 100;
-    
+
     // See SH.shader for more details
     float4 results[7] = {
         float4(0, 0, 0, 0), // SH_0_1_r
         float4(0, 0, 0, 0), // SH_0_1_g
         float4(0, 0, 0, 0), // SH_0_1_b
-        
+
         float4(0, 0, 0, 0), // SH_2_r
         float4(0, 0, 0, 0), // SH_2_g
         float4(0, 0, 0, 0), // SH_2_b
-        
+
         float4(0, 0, 0, 0), // SH_2_rgb
     };
-    
+
     // Populate results buffer using monte-carlo method.
     // You can see the Random(i) function. Use it just as with the previous task.
+
+    float3 li_l0m0 = float3(0, 0, 0);
+
+    float3 li_l1m_1 = float3(0, 0, 0);
+    float3 li_l1m0 = float3(0, 0, 0);
+    float3 li_l1m1 = float3(0, 0, 0);
+
+    float3 li_l2m_2 = float3(0, 0, 0);
+    float3 li_l2m_1 = float3(0, 0, 0);
+    float3 li_l2m0 = float3(0, 0, 0);
+    float3 li_l2m1 = float3(0, 0, 0);
+    float3 li_l2m2 = float3(0, 0, 0);
+    int nSamples = 10000;
+    // интеграл li методом монте-карло. 
+
+    for (int idx = 0; idx < nSamples; ++idx)
+    {
+        // как в прошлый раз посчитаем направление
+        float alpha = Random(2 * idx) * TWO_PI;
+        float cosTheta = 2 * Random(2 * idx + 1) - 1;
+        float sinTheta = sqrt(1 - pow(cosTheta, 2));
+        float3 w = normalize(float3(sinTheta * cos(alpha), sinTheta * sin(alpha), cosTheta));
+
+        float3 Li = SampleColor(w);
+        
+        li_l0m0 += Li * harmony_count(w, 0, 0);
+        li_l1m_1 += Li * harmony_count(w, 1, -1);
+        li_l1m0 += Li * harmony_count(w, 1, 0);
+        li_l1m1 += Li * harmony_count(w, 1, 1);
+        li_l2m_2 += Li * harmony_count(w, 2, -2);
+        li_l2m_1 += Li * harmony_count(w, 2, -1);
+        li_l2m0 += Li * harmony_count(w, 2, 0);
+        li_l2m1 += Li * harmony_count(w, 2, 1);
+        li_l2m2 += Li * harmony_count(w, 2, 2);
+    }
+
+    float C[] = {PI, 2.f * PI / 3.f, PI / 4.f};
+    
+    // как бы поделили на PI заранее, поэтому тут не 4 PI
+    li_l0m0 = li_l0m0  * 4 / nSamples * harmony_coeff(0,0) * C[0];
+    li_l1m_1 = li_l1m_1 * 4 / nSamples * harmony_coeff(1,-1) * C[1];
+    li_l1m0 = li_l1m0 * 4 / nSamples * harmony_coeff(1,0) * C[1];
+    li_l1m1 = li_l1m1 * 4 / nSamples * harmony_coeff(1,1) * C[1];
+    li_l2m_2 = li_l2m_2 * 4 / nSamples * harmony_coeff(2,-2) * C[2];
+    li_l2m_1 = li_l2m_1 * 4 / nSamples * harmony_coeff(2,-1) * C[2];
+    li_l2m0 = li_l2m0 * 4 / nSamples * harmony_coeff(2,0)* C[2];
+    li_l2m1 = li_l2m1  * 4 / nSamples * harmony_coeff(2,1)* C[2];
+    li_l2m2 = li_l2m2 * 4 / nSamples * harmony_coeff(2,2)* C[2];
     
     // TASK: project light from _Env to spherical harmonic coefficients and store them in results[]
     
+    
+    results[0][0] = li_l1m1.x; results[0][1] = li_l1m_1.x;
+    results[0][2] = li_l1m0.x; results[0][3] = li_l0m0.x;
+
+    results[1][0] = li_l1m1.y; results[1][1] = li_l1m_1.y;
+    results[1][2] = li_l1m0.y; results[1][3] = li_l0m0.y;
+
+    results[2][0] = li_l1m1.z; results[2][1] = li_l1m_1.z;
+    results[2][2] = li_l1m0.z; results[2][3] = li_l0m0.z;
+
+    
+    results[3][0] = li_l2m_2.x; results[3][1] = li_l2m_1.x;
+    results[3][2] = li_l2m1.x; results[3][3] = li_l2m0.x;
+
+    results[4][0] = li_l2m_2.y; results[4][1] = li_l2m_1.y;
+    results[4][2] = li_l2m1.y; results[4][3] = li_l2m0.y;
+
+    results[5][0] = li_l2m_2.z; results[5][1] = li_l2m_1.z;
+    results[5][2] = li_l2m1.z; results[5][3] = li_l2m0.z;
+    
+    results[6][0] = li_l2m2.x; results[6][1] = li_l2m2.y; results[6][2] = li_l2m2.z; 
+
+   
     SH_0_1_r[id] = results[0];
     SH_0_1_g[id] = results[1];
     SH_0_1_b[id] = results[2];
-    
+
     SH_2_r[id] = results[3];
     SH_2_g[id] = results[4];
-    SH_2_b[id] = results[5];    
-    
+    SH_2_b[id] = results[5];
+
     SH_2_rgb[id] = results[6];
 }

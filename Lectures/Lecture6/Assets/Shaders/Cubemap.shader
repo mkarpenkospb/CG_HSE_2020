@@ -98,13 +98,13 @@
                 // Replace this specular calculation by Montecarlo.
                 // Normalize the BRDF in such a way, that integral over a hemysphere of (BRDF * dot(normal, w')) == 1
                 // TIP: use Random(i) to get a pseudo-random value.
-                int nSamples = 2000;
+                int nSamples = 10000;
                 float3 accIntegral = float3(0, 0, 0);
                 float accNormIntegral = 0;
                 
                 for (int w_idx = 0; w_idx < nSamples; w_idx++)
                 {
-                    float alpha = Random(2 * w_idx) * UNITY_TWO_PI;
+                    float alpha = Random(2 * w_idx) * 2 * UNITY_TWO_PI;
                     float cosTheta = Random( 2 * w_idx  + 1);
                     float sinTheta = sqrt(1 - pow (cosTheta, 2));
                     
@@ -116,7 +116,7 @@
                     accIntegral += L_i * GetSpecularBRDF(viewDirection, w, normal) * dot(w, normal);
                 }    
                 
-                float3 integral = accIntegral / accNormIntegral ; 
+                float3 integral = accIntegral / accNormIntegral; 
                 return fixed4( integral, 1);
             }
             ENDCG
