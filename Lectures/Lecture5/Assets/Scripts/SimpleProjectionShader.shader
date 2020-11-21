@@ -55,9 +55,11 @@ Shader "Custom/ProjectionShader"
                 o.pos = UnityObjectToClipPos(v.vertex); // Equivalient of mul(UNITY_MATRIX_MVP, vertex)
                 o.uv = v.texcoord;
                 o.normal = UnityObjectToWorldNormal(v.normal);
-              
+                
                 // Calculate world space position of the vertex here and pass it to a vertex shader.
+
                 o.wPos = mul(unity_ObjectToWorld, v.vertex);
+                
                 return o;
             }
             
@@ -74,10 +76,12 @@ Shader "Custom/ProjectionShader"
                 i.normal = normalize(i.normal);
                 
                 // Calculate albedo by projecting _XAlbedo, _YAlbedo, _ZAlbedo on world position. Asjust texel to world space ratio using _Scale.
-                fixed4 albedo = tex2D(_XAlbedo, i.wPos.yz * _Scale) * i.normal.x * i.normal.x +
-                                tex2D(_YAlbedo, i.wPos.xz * _Scale) * i.normal.y * i.normal.y +
-                                tex2D(_ZAlbedo, i.wPos.xy * _Scale) * i.normal.z * i.normal.z;
-                    //fixed4(0.5, 0.5, 0.5, 1);
+
+                i.wPos = i.wPos * _Scale;
+
+                fixed4 albedo = tex2D(_XAlbedo, i.wPos.yz) * i.normal.x *  i.normal.x +
+                                    tex2D(_YAlbedo, i.wPos.xz) * i.normal.y *  i.normal.y +
+                                        tex2D(_ZAlbedo, i.wPos.xy) * i.normal.z *  i.normal.z;
                 
                 return float4(albedo.rgb * getLighting(i), 1);
             }
