@@ -86,31 +86,51 @@
 //worldSurfaceNormal
 //#if MODE_BUMP
         // Change UV according to the Parallax Offset Mapping
-//        half3 newViewDir = normalize(float3(
-//            dot(i.tangent, worldViewDir),
-//            dot(i.bitangent, worldViewDir),
-//            dot(i.worldSurfaceNormal, worldViewDir)));
 
         half3 newViewDir = -normalize(float3(
             dot(i.wtangent, worldViewDir),
             dot(i.wbitangent, worldViewDir),
             dot(i.wNormal, worldViewDir)));
         
-        half height = (1-tex2D(_HeightMap, uv).x);
-        // последний вектор направляет кирпичи в нужную сторону, иначе как ни умножай, не туда растут
-        half2 p = (newViewDir.xy / newViewDir.z * (height * _MaxHeight)) * half2(1, -1);
-        uv = uv - p;
-    
+        half height = (1 - tex2D(_HeightMap, uv).x) * _MaxHeight;
+
+// ------------------------------- ЭТО ДЛЯ второго задания -----------------------------------------------------
+//        последний вектор направляет кирпичи в нужную сторону, иначе как ни умножай, не похоже на пример
+//        half2 p = (newViewDir.xy / newViewDir.z * (height * _MaxHeight)) * half2(1, -1);
+//        uv = uv + p;  
+   
 //#endif   
     
         float depthDif = 0;
-#if MODE_POM | MODE_POM_SHADOWS    
+//#if MODE_POM | MODE_POM_SHADOWS    
         // Change UV according to Parallax Occclusion Mapping
-
+//-------------------------------- --------------------------- Третье задание --------------------------------------        
+        half2 curr_coords = uv;
+        half finalRes = uv;
+//
+        half curret_depth = 0;
+//
+        const float numLayers = 100;
+        float layerDepth = 1.0 / numLayers;
+//        
+        half2 coords_step = (newViewDir.xy * half2(-1, 1)) * (_MaxHeight * 3) / numLayers;
+//
+        int counter = 0;
+        while (curret_depth < height)
+        {
+            counter ++;
+            curr_coords += coords_step;
+            height = (1 - tex2D(_HeightMap, curr_coords).x);
+            curret_depth += layerDepth;
+            if (counter >= 100)
+            {
+                break;
+            }
+        }
+          
+        uv = curr_coords;
         
-
-        
-#endif
+//#endif
         
         float3 worldLightDir = normalize(_WorldSpaceLightPos0.xyz);
         float shadow = 0;
@@ -120,14 +140,13 @@
 
         
 //#if !MODE_PLAIN
-//          half3 normal = UnpackNormal(tex2D(_NormalMap, uv));
-
+      
+// --------------------------------- ПЕРВОЕ ЗАДАНИЕ -----------------------------------------------------
         float3 M = UnpackNormal(tex2D(_NormalMap, uv));
         half3 normal = M.x * i.wtangent + M.y * i.wbitangent + M.z * i.wNormal;
-//        half3 normal = M.x * i.tangent + M.y * i.bitangent + M.z * i.worldSurfaceNormal;
+
 //#endif
         
-//        half3 normal = i.worldSurfaceNormal;
         // Diffuse lightning
         half cosTheta = max(0, dot(normal, worldLightDir));
         half3 diffuseLight = max(0, cosTheta) * _LightColor0 * max(0, 1 - shadow);
