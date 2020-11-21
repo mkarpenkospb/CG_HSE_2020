@@ -54,7 +54,7 @@
         half3 wTangent = UnityObjectToWorldDir(tangent.xyz);
         
         o.uv = uv;
-        half3 bitangent = cross(normal, tangent) * tangent.w;
+        half3 bitangent = cross(normal, tangent);
         // ага, кончено
 //        half3 M = texture(_MainTex, uv);
 //        o.worldSurfaceNormal = M.x * tangent + M.y * bitangent + M.z * normal;
@@ -78,14 +78,12 @@
     
     float _Reflectivity;
 
+    // https://learnopengl.com/Advanced-Lighting/Parallax-Mapping
     void frag (in v2f i, out half4 outColor : COLOR, out float outDepth : DEPTH)
     {
         float2 uv = i.uv;
         
         float3 worldViewDir = normalize(i.worldPos.xyz - _WorldSpaceCameraPos.xyz);
-//worldSurfaceNormal
-//#if MODE_BUMP
-        // Change UV according to the Parallax Offset Mapping
 
         half3 newViewDir = -normalize(float3(
             dot(i.wtangent, worldViewDir),
@@ -94,27 +92,32 @@
         
         half height = (1 - tex2D(_HeightMap, uv).x) * _MaxHeight;
 
+        
+//worldSurfaceNormal
+#if MODE_BUMP
+        // Change UV according to the Parallax Offset Mapping
+
+
 // ------------------------------- ЭТО ДЛЯ второго задания -----------------------------------------------------
 //        последний вектор направляет кирпичи в нужную сторону, иначе как ни умножай, не похоже на пример
-//        half2 p = (newViewDir.xy / newViewDir.z * (height * _MaxHeight)) * half2(1, -1);
-//        uv = uv + p;  
+        half2 p = (newViewDir.xy / newViewDir.z * height) * half2(-1, 1);
+        uv = uv + p;  
    
-//#endif   
+#endif   
     
         float depthDif = 0;
-//#if MODE_POM | MODE_POM_SHADOWS    
+#if MODE_POM | MODE_POM_SHADOWS    
         // Change UV according to Parallax Occclusion Mapping
 //-------------------------------- --------------------------- Третье задание --------------------------------------        
         half2 curr_coords = uv;
         half finalRes = uv;
-//
         half curret_depth = 0;
-//
+
         const float numLayers = 100;
         float layerDepth = 1.0 / numLayers;
-//        
+        
         half2 coords_step = (newViewDir.xy * half2(-1, 1)) * (_MaxHeight * 3) / numLayers;
-//
+
         int counter = 0;
         while (curret_depth < height)
         {
@@ -122,15 +125,12 @@
             curr_coords += coords_step;
             height = (1 - tex2D(_HeightMap, curr_coords).x);
             curret_depth += layerDepth;
-            if (counter >= 100)
-            {
-                break;
-            }
+            if (counter >= 100) { break; }
         }
           
         uv = curr_coords;
         
-//#endif
+#endif
         
         float3 worldLightDir = normalize(_WorldSpaceLightPos0.xyz);
         float shadow = 0;
@@ -139,13 +139,13 @@
 #endif
 
         
-//#if !MODE_PLAIN
+#if !MODE_PLAIN
       
 // --------------------------------- ПЕРВОЕ ЗАДАНИЕ -----------------------------------------------------
         float3 M = UnpackNormal(tex2D(_NormalMap, uv));
         half3 normal = M.x * i.wtangent + M.y * i.wbitangent + M.z * i.wNormal;
 
-//#endif
+#endif
         
         // Diffuse lightning
         half cosTheta = max(0, dot(normal, worldLightDir));
